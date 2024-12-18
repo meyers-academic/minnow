@@ -22,6 +22,10 @@ classifiers = [
 requires-python = ">=3.8.1"
 dynamic = ["version"]
 
+dependencies = ["numpy",
+                "scipy",
+                "tqdm"]
+
 [project.optional-dependencies]
 spark = [
     "pyspark>=3.0.0"
@@ -47,12 +51,12 @@ test = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/microsoft/python-package-template/tree/main#readme"
-Source = "https://github.com/microsoft/python-package-template"
-Tracker = "https://github.com/microsoft/python-package-template/issues"
+# Documentation = "https://github.com/microsoft/python-package-template/tree/main#readme"
+Source = "https://github.com/meyers-academic/minnow"
+# Tracker = "https://github.com/microsoft/python-package-template/issues"
 
 [tool.flit.module]
-name = "python_package"
+name = "minnow"
 
 [tool.bandit]
 exclude_dirs = ["build","dist","tests","scripts"]
