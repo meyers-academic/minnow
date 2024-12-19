@@ -4,6 +4,7 @@ from scipy.stats import norm
 from abc import abstractmethod
 from copy import deepcopy
 from tqdm import tqdm
+from loguru import logger
 
 
 
@@ -64,6 +65,32 @@ class BaseSplineModel(object):
         self.current_heights = np.ones(self.N_possible_knots) * (self.yhigh - self.ylow) / 2. + self.ylow
         self.log_output = log_output
 
+        # for handling proposals
+        self._proposal_cycle = {
+            'birth': 1,
+            'death': 1,
+            'change_amplitude_prior_draw': 1,
+            'change_amplitude_gaussian': 1,
+            'change_knot_location': 1
+        }
+        self._available_proposals = list(self._proposal_cycle.keys())
+
+    @property
+    def available_proposals(self):
+        """The available_proposals property."""
+        return self._available_proposals
+    @available_proposals.setter
+    def available_proposals(self, value):
+        self._available_proposals = value
+
+    @property
+    def proposal_cycle(self):
+        """proposal cycle"""
+        return self._proposal_cycle
+    @proposal_cycle.setter
+    def proposal_cycle(self, value):
+        self._proposal_cycle = value
+        self._available_proposals = list(self._proposal_cycle.keys())
 
     def evaluate_interp_model(self, xvals_to_evaluate, heights, config, knots, log_xvals=False):
         """
@@ -100,7 +127,7 @@ class BaseSplineModel(object):
         """
         pass
 
-    def propose_birth_move(self):
+    def birth(self):
         if np.sum(self.configuration) == self.N_possible_knots:
             return (-np.inf, -np.inf, self.configuration, self.current_heights, self.available_knots)
         else:
@@ -141,7 +168,7 @@ class BaseSplineModel(object):
 
         return new_ll, (log_py - log_px) + (log_qx - log_qy), new_config, new_heights, new_knots
 
-    def propose_death_move(self, specific_idx=None):
+    def death(self, specific_idx=None):
         """
         propose to "turn off" one of the current knots that are turned on.
         """
@@ -179,7 +206,7 @@ class BaseSplineModel(object):
 
             return new_ll, (log_py - log_px) + (log_qx - log_qy), new_config, new_heights, self.available_knots
 
-    def propose_change_amplitude_gaussian(self):
+    def change_amplitude_gaussian(self):
         """
         Pick one of the knots that are turned
         on and propose to change
@@ -216,7 +243,7 @@ class BaseSplineModel(object):
             return -np.log(self.xhighs[idx] - self.xlows[idx])
         return -np.inf
 
-    def propose_change_amplitude_prior_draw(self):
+    def change_amplitude_prior_draw(self):
         """
         choose one of the knots that are turned on and propose
         a new height that is drawn from the prior.
@@ -226,7 +253,6 @@ class BaseSplineModel(object):
             return -np.inf, -np.inf, self.configuration, self.current_heights, self.available_knots
         # random point to change amplitude
         idx_to_change = np.random.choice(np.where(self.configuration)[0])
-
         # propose draw from prior
         new_heights = deepcopy(self.current_heights)
         new_heights[idx_to_change] = (self.yhigh - self.ylow) * np.random.rand() + self.ylow
@@ -238,7 +264,7 @@ class BaseSplineModel(object):
             prior_change = 0
         return new_ll, prior_change, self.configuration, new_heights, self.available_knots
 
-    def propose_change_knot_location(self):
+    def change_knot_location(self):
         """change the location of one of the knots that are turned on
         """
         if np.sum(self.configuration) == 0:
@@ -254,7 +280,10 @@ class BaseSplineModel(object):
             prior_change = 0
         return new_ll, prior_change, self.configuration, self.current_heights, new_knots
 
-    def sample(self, Niterations, proposal_weights=(1, 1, 1, 1, 1), prior_test=False,
+
+
+
+    def sample(self, Niterations, proposal_cycle=None, prior_test=False,
                start_config=None, start_heights=None, temperature=1, start_knots=None):
         """
         Run RJMCMC sampler
@@ -315,9 +344,13 @@ class BaseSplineModel(object):
             current_ll = -np.inf
 
         # list of functions for proposals
-        proposals = [self.propose_birth_move, self.propose_death_move,
-                     self.propose_change_amplitude_prior_draw, self.propose_change_amplitude_gaussian,
-                     self.propose_change_knot_location]
+        if proposal_cycle is not None:
+            self.proposal_cycle = proposal_cycle
+        proposals = [getattr(self, p) for p in self.available_proposals]
+        proposal_weights = [self.proposal_cycle[p] for p in self.available_proposals]
+        logger.info(f"Proposal Cycle: {self.proposal_cycle}")
+        if 'birth' in self.available_proposals and 'death' in self.available_proposals:
+            birth_to_death_ratio = self.proposal_cycle['birth'] / self.proposal_cycle['death']
 
         for ii in tqdm(range(Niterations)):
             # choose proposal
@@ -337,10 +370,10 @@ class BaseSplineModel(object):
             # if ratio with which we make proposals is different.
             # this is subtle...usually the ratio of *which* proposals you choose
             # doesn't matter
-            if proposal_idx == 0:
-                q = np.log(proposal_weights[1] / (proposal_weights[0]))
-            elif proposal_idx == 1:
-                q = np.log((proposal_weights[0]) / proposal_weights[1])
+            if self.available_proposals[proposal_idx] == 'birth':
+                q = -np.log(birth_to_death_ratio)
+            elif self.available_proposals[proposal_idx] == 'death':
+                q = np.log(birth_to_death_ratio)
             else:
                 q = 0
 
@@ -376,6 +409,9 @@ class SamplerResults(object):
         self.lls = lls
         self.move_types = move_types
         self.knots = knots
+
+    def get_num_knots(self):
+        return np.sum(self.configurations, axis=1)
 
 
 class SmoothCurveDataObj(object):
