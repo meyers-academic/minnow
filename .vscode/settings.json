@@ -26,5 +26,5 @@
     "isort.args": [
         "--settings-path=pyproject.toml"
     ],
-    "workbench.colorTheme": "Monokai"
+    "workbench.colorTheme": "Default Light Modern"
 }

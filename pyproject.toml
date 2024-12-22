@@ -3,9 +3,9 @@ requires = ["flit_core >=2,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name =  "py-project-toml"
+name =  "minnow"
 authors = [
-    {name = "Daniel Ciborowski", email = "dciborow@microsoft.com"},
+    {name = "Patrick Meyers", email = "pmeyers279@gmail.com"},
 ]
 description = "Sample Python Project for creating a new Python Module"
 readme = "README.md"
