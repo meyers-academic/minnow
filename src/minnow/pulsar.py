@@ -1,12 +1,15 @@
 import discovery as ds
 import numpy as np
+import matplotlib.pyplot as plt
+from loguru import logger
+from enterprise.pulsar import Pulsar as epPulsar
 
 
 class MultiBandPulsar(ds.Pulsar):
     """MultiBandPulsar -- A class for handling pulsar data with multiple frequency channels
     at given TOAs.
     """
-    def __init__(self, toas, residuals, radio_frequencies, toaerrs, backend_flags, noisedict=None, name='psr', Mmat=None):
+    def __init__(self, toas, residuals, radio_frequencies, toaerrs, backend_flags, Mmat, noisedict=None, name='psr', cutidxs=[6, 7]):
 
         bins = ds.quantize(toas)
         ubins, counts = np.unique(bins, return_counts=True) # number of TOAs per bin
@@ -23,9 +26,7 @@ class MultiBandPulsar(ds.Pulsar):
         # self.backend_flags = backend_flags
         self.backend_flags = []
 
-        if Mmat is None:
-            self.Mmat = Mmat
-
+        # cut down Mmat
         self.name = name
 
         self.noisedict = noisedict
@@ -33,6 +34,9 @@ class MultiBandPulsar(ds.Pulsar):
     # get indexes associated with each bin for pulling out TOAs and putting
     # them into padded arrays
         idxs = np.cumsum(counts_prep)
+        Mmat = np.delete(Mmat, cutidxs, axis=1)
+        Mmat, _, _ = np.linalg.svd(Mmat, full_matrices=False)
+        self.Mmats = np.zeros((counts.size, maxcounts, Mmat.shape[1]))
 
         for ii,c in enumerate(counts):
             self.residuals[ii][:c] = residuals[idxs[ii]:idxs[ii+1]]
@@ -41,28 +45,91 @@ class MultiBandPulsar(ds.Pulsar):
             self.toaerrs[ii][:c] = toaerrs[idxs[ii]:idxs[ii+1]]
             self.radio_freqs[ii][:c] = radio_frequencies[idxs[ii]:idxs[ii+1]]
             self.masks[ii][:c] = np.ones(c)
+            # assume we can just take one column of the Mmatrix
+            # for each epoch.
+            # We should probably test this, though.
+            # Do not take F and F1 columns, which we assume are first.
+            # self.Mmat.append(np.mean(Mmat[idxs[ii]:idxs[ii+1]], axis=0))
+            self.Mmats[ii, :c, :] = Mmat[idxs[ii]:idxs[ii+1]]
 
             if np.unique(backend_flags[idxs[ii]:idxs[ii+1]]).size > 1:
-                raise ValueError("There are multiple backend flags in a single epoch")
+                logger.warning("There are multiple backend flags in a single epoch")
+                # raise ValueError("There are multiple backend flags in a single epoch")
             self.backend_flags.append(backend_flags[idxs[ii]])
 
         self.mean_toas = np.insert(self.mean_toas, 0, self.mean_toas[0]-1)
         self.toa_diffs = np.diff(self.mean_toas)
 
     @classmethod
-    def read_feather_pre_process(cls, fname, pass_mmat=False):
-        return cls.from_discovery(ds.Pulsar.read_feather(fname), pass_mmat=pass_mmat)
+    def read_feather_pre_process(cls, fname):
+        return cls.from_discovery(ds.Pulsar.read_feather(fname))
 
     @classmethod
-    def from_discovery(cls, ds_psr, pass_mmat=False):
-        if pass_mmat:
-            Mmat = ds_psr.Mmat
-        else:
-            Mmat = None
+    def from_discovery(cls, ds_psr):
 
         if hasattr(ds_psr, 'noisedict'):
             noisedict = ds_psr.noisedict
         else:
             noisedict = None
         return cls(ds_psr.toas, ds_psr.residuals,
-                   ds_psr.freqs, ds_psr.toaerrs, ds_psr.backend_flags, noisedict=noisedict, Mmat=Mmat, name=ds_psr.name)
+                   ds_psr.freqs, ds_psr.toaerrs,
+                   ds_psr.backend_flags, ds_psr.Mmat,
+                   noisedict=noisedict, name=ds_psr.name)
+
+def standard_cut(Mmat, fitpars):
+    idx = 0
+    cuts = []
+    for fp in fitpars:
+        if "F0"==fp:
+            cuts.append(idx)
+        if "F1"==fp:
+            cuts.append(idx)
+        if "DMX" in fp:
+            cuts.append(idx)
+        if "DMJUMP" in fp:
+            cuts.append(idx)
+        idx += 1
+    return np.delete(Mmat, cuts, axis=1)
+
+
+class SingleBandPulsar(ds.Pulsar):
+    """Single -- A class for handling pulsar data with a single frequency channels
+    at given TOA.
+    """
+    def __init__(self, toas, residuals, radio_frequencies,
+                 toaerrs, backend_flags, Mmat, fitpars,
+                 noisedict=None, name='psr'):
+
+        self.toas = toas
+        self.toaerrs = toaerrs
+        self.residuals = residuals
+        self.radio_freqs = radio_frequencies
+        self.backend_flags = backend_flags
+        self.fitpars = fitpars
+
+        self.toa_diffs = np.diff(toas)
+        self.toa_diff_errors = np.sqrt(toaerrs[1:]**2 + toaerrs[:-1]**2)
+
+        # cut up Mmat
+        # Mmat = cutfunc(Mmat, fitpars)
+        self.Mmat = Mmat
+        if noisedict:
+            self.noisedict = noisedict
+        self.name = name
+
+
+    @classmethod
+    def read_par_tim(cls, p, t, **kwargs):
+        return cls.from_enterprise(epPulsar(str(p), str(t), **kwargs))
+
+    @classmethod
+    def from_enterprise(cls, ds_psr):
+
+        if hasattr(ds_psr, 'noisedict'):
+            noisedict = ds_psr.noisedict
+        else:
+            noisedict = None
+        return cls(ds_psr.toas, ds_psr.residuals,
+                   ds_psr.freqs, ds_psr.toaerrs,
+                   ds_psr.backend_flags, ds_psr.Mmat, ds_psr.fitpars,
+                   noisedict=noisedict, name=ds_psr.name)

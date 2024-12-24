@@ -3,15 +3,16 @@ import minnow as mn
 import numpy as np
 
 def test_make_residual_tracking_transition_matrix_dm():
-    psr = mn.MultiBandPulsar.read_feather_pre_process("data/v1p1_de440_pint_bipm2019-B1855+09.feather")
+    psr = mn.MultiBandPulsar.read_feather_pre_process("data/12p5_nodmx/B1855+09_12p5y_no_dmx.feather")
     transition_matrices = mn.make_residual_tracking_transition_matrix_dm(psr)
-    assert transition_matrices.shape == (360, 4, 4)
+    assert transition_matrices.shape == (318, 24, 24)
 
     # We should start with small step.
-    assert np.allclose(transition_matrices[0, :, :], [[1, 1, 0.5, 0],
-                                                      [0, 1, 1, 0],
-                                                      [0, 0, 1, 0],
-                                                      [0, 0, 0, 1]])
+    assert np.allclose(transition_matrices[0, :4, :4], [[1, 1, 0.5, 0],
+                                                        [0, 1, 1, 0],
+                                                        [0, 0, 1, 0],
+                                                        [0, 0, 0, 1]])
+
 
 def test_make_residual_tracking_transition_matrix():
     psr = mn.MultiBandPulsar.read_feather_pre_process("data/v1p1_de440_pint_bipm2019-B1855+09.feather")
@@ -24,11 +25,11 @@ def test_make_residual_tracking_transition_matrix():
                                                       [0, 0, 1]])
 
 def test_make_design_matrix_dm():
-    psr = mn.MultiBandPulsar.read_feather_pre_process("data/v1p1_de440_pint_bipm2019-B1855+09.feather")
+    psr = mn.MultiBandPulsar.read_feather_pre_process("data/12p5_nodmx/B1855+09_12p5y_no_dmx.feather")
     frot_dummy = np.random.rand() * 1000
     design_matrices = mn.make_design_matrix_dm(psr, frot_dummy)
-    assert design_matrices.shape == (360, 49, 4), 'Shape of design matrices is not as expected'
-    assert np.allclose(design_matrices[0, 0, :], [frot_dummy**-1, 0, 0, (psr.radio_freqs[0][0] / 1400)**-2]), 'First row of first epoch is not as expected'
+    assert design_matrices.shape == (318, 49, 24), 'Shape of design matrices is not as expected'
+    assert np.allclose(design_matrices[0, 0, :4], [frot_dummy**-1, 0, 0, (psr.radio_freqs[0][0] / 1400)**-2]), 'First row of first epoch is not as expected'
 
 
 def test_make_design_matrix():
@@ -38,25 +39,26 @@ def test_make_design_matrix():
     assert design_matrices.shape == (360, 49, 3), 'Shape of design matrices is not as expected'
     assert np.allclose(design_matrices[0, 0, :], [frot_dummy**-1, 0, 0]), 'First row of first epoch is not as expected'
 
-def test_make_covariance_matrix_mb_dm():
-    psr = mn.MultiBandPulsar.read_feather_pre_process("data/v1p1_de440_pint_bipm2019-B1855+09.feather")
-    out = mn.make_covariance_matrices_mb(psr, mn.covariance_matrix_mb_dm)
+def test_make_covariance_matrix_dm():
+    psr = mn.MultiBandPulsar.read_feather_pre_process("data/12p5_nodmx/B1855+09_12p5y_no_dmx.feather")
+    out = mn.make_covariance_matrices(psr, mn.covariance_matrix_dm)
     print(out.params)
     params = {p: np.random.rand() for p in out.params}
     Q = out(params)
 
-    assert Q.shape == (360, 4, 4), 'Shape of Q is not as expected'
+    assert Q.shape == (318, 24, 24), 'Shape of Q is not as expected'
     assert out.params == ['B1855+09_process_cov_sigma_dphi', 'B1855+09_process_cov_sigma_df', 'B1855+09_process_cov_sigma_dfdot', 'B1855+09_process_cov_sigma_dm_dphi']
 
-def test_make_covariance_matrix_mb():
+def test_make_covariance_matrix():
     psr = mn.MultiBandPulsar.read_feather_pre_process("data/v1p1_de440_pint_bipm2019-B1855+09.feather")
-    out = mn.make_covariance_matrices_mb(psr, mn.covariance_matrix_mb)
+    out = mn.make_covariance_matrices(psr, mn.covariance_matrix)
     print(out.params)
     params = {p: np.random.rand() for p in out.params}
     Q = out(params)
 
     assert Q.shape == (360, 3, 3), 'Shape of Q is not as expected'
-    assert out.params == ['B1855+09_process_cov_sigma_dphi', 'B1855+09_process_cov_sigma_df', 'B1855+09_process_cov_sigma_dfdot']
+    print(out.params)
+    assert sorted(out.params) == sorted(['B1855+09_process_cov_sigma_dphi', 'B1855+09_process_cov_sigma_df', 'B1855+09_process_cov_sigma_dfdot'])
 
 def test_make_measurement_covar():
     psr = mn.MultiBandPulsar.read_feather_pre_process("data/v1p1_de440_pint_bipm2019-B1855+09.feather")

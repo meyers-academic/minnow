@@ -9,7 +9,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 from .signals import *
-from .config import *
+from .settings import *
 from .kalman import *
 from .pulsar import *
 

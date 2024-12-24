@@ -12,3 +12,9 @@ def test_load_pulsar():
     print(len(psr.residuals))
     assert len(psr.residuals) == 360
     assert isinstance(psr, mn.MultiBandPulsar)
+
+def test_load_sb_pulsar():
+    data_dir = Path(__file__).resolve().parent.parent / "data/wideband"
+    par = data_dir / "par/B1855+09_PINT_20230131.wb.par"
+    tim = data_dir / "tim/B1855+09_PINT_20230131.wb.tim"
+    mn.SingleBandPulsar.read_par_tim(par, tim, timing_package="pint", ephem="DE440", bipm_version="BIPM2019", clk="TT(BIPM2019)")
